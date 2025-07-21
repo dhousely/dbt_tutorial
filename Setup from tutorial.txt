@@ -1,0 +1,346 @@
+Here is the comprehensive guide summarizing your dbt Core setup experience on a PC with Snowflake, incorporating all our discussions, troubleshooting steps, and conceptual insights.
+
+-----
+
+# dbt Core Setup Guide for PC (Windows) with Snowflake
+
+This guide outlines the steps and considerations for setting up dbt Core on a Windows PC, connecting it to Snowflake, and establishing a robust development environment. It incorporates best practices, common troubleshooting steps, and conceptual understandings gained throughout the setup process.
+
+## Introduction
+
+This document serves as a detailed guide for individuals or teams looking to establish a local dbt Core development environment on a Windows PC, specifically tailored for Snowflake as the data warehouse. It covers installation, configuration, key conceptual understandings, and common pitfalls encountered during setup.
+
+**Assumptions:**
+
+  * You are using a Windows PC.
+  * You have a Snowflake account (trial or standard) with administrative access to create objects and manage permissions.
+  * You are using VSCode as your primary code editor.
+  * You intend to manage your dbt project locally with Git/GitHub.
+
+## 1\. Initial Setup & Prerequisites
+
+### 1.1. VSCode Setup (on PC)
+
+1.  **Open VSCode to a Local Folder:** To avoid conflicts with previous dev container setups, open VSCode directly to an empty or new local folder where you intend to house your dbt project. Use `File > Open Folder...`.
+2.  **Install Recommended VSCode Extensions:**
+      * **Better Jinja:** Essential for proper Jinja-flavored SQL highlighting.
+          * Marketplace: [https://marketplace.visualstudio.com/items?itemName=samuelcolvin.jinjahtml](https://marketplace.visualstudio.com/items?itemName=samuelcolvin.jinjahtml)
+      * **Official VSCode DBT extension:** Provides core dbt language features, syntax highlighting, and potentially integration with dbt Cloud.
+          * Marketplace: [https://marketplace.visualstudio.com/items?itemName=dbtLabsInc.dbt](https://marketplace.visualstudio.com/items?itemName=dbtLabsInc.dbt)
+      * **Rainbow CSV:** (Optional but handy) Visualizes CSV files with colored columns, useful for `dbt seeds`.
+          * Marketplace: [https://marketplace.visualstudio.com/items?itemName=mechatroner.rainbow-csv](https://marketplace.visualstudio.com/items?itemName=mechatroner.rainbow-csv)
+3.  **Configure VSCode `settings.json` for File Associations:**
+      * Open your `settings.json` (`Ctrl+Shift+P` and type `settings.json` -\> `Preferences: Open User Settings (JSON)`).
+      * Add the following `files.associations` to ensure proper syntax highlighting for dbt-specific files:
+        ```json
+        {
+            "files.associations": {
+                "*.sql": "jinja-sql",
+                "*.yml": "yaml",
+                "*.yaml": "yaml",
+                "*.md": "markdown",
+                "*.json": "json"
+            }
+        }
+        ```
+
+### 1.2. Python Installation
+
+dbt Core requires **Python 3.9 or higher**.
+
+1.  **Install Python:** The easiest method on Windows is via the **Microsoft Store**. Search for "Python" and install a recent stable version (e.g., Python 3.12). This typically handles adding Python to your system's PATH automatically.
+2.  **Verify Installation:** Open your VSCode integrated terminal (` Ctrl+``  ` \`\`) and run:
+    ```bash
+    python --version
+    ```
+    You should see the installed Python version.
+
+### 1.3. Python Virtual Environment
+
+It is a **best practice** to use a Python virtual environment for dbt projects. This isolates dbt and its dependencies from other Python projects, preventing conflicts.
+
+1.  **Create Virtual Environment:** In your VSCode terminal, from your dbt project's parent directory:
+    ```bash
+    python -m venv dbt-env
+    ```
+    (This creates a folder named `dbt-env` within your current directory.)
+2.  **Activate Virtual Environment (Windows PowerShell):**
+    ```bash
+    .\dbt-env\Scripts\activate
+    ```
+    Your terminal prompt will change to include `(dbt-env)` (e.g., `(dbt-env) C:\path\to\your\project>`), indicating activation.
+      * **Note:** For a quickstart, you decided to **skip creating a persistent alias** for activation. This means you will need to run the `.\dbt-env\Scripts\activate` command manually every time you open a new terminal session where you want to use dbt.
+
+### 1.4. dbt Core & Snowflake Adapter Installation
+
+1.  **Upgrade Pip, Setuptools, Wheel:** It's good practice to ensure your Python package management tools are up-to-date within your activated virtual environment:
+    ```bash
+    python -m pip install --upgrade pip setuptools wheel
+    ```
+2.  **Install dbt Core and Snowflake Adapter:**
+    ```bash
+    pip install dbt-core dbt-snowflake
+    ```
+    (Confirmed versions: `dbt-core=1.10.3`, `snowflake=1.9.4`).
+
+## 2\. Snowflake Setup & Permissions
+
+### 2.1. Snowflake Account Preparation (Jaffle Shop Data)
+
+Follow the dbt Snowflake Quickstart Guide ([https://docs.getdbt.com/guides/snowflake?step=1](https://docs.getdbt.com/guides/snowflake?step=1)) to prepare your Snowflake account:
+
+1.  **Create a New Snowflake Worksheet:** Log into Snowflake UI -\> `+ Create` -\> `SQL Worksheet`.
+2.  **Create Warehouse, Databases, Schemas:** Run the following SQL in your Snowflake worksheet:
+    ```sql
+    create warehouse transforming;
+    create database raw;
+    create database analytics;
+    create schema raw.jaffle_shop;
+    create schema raw.stripe;
+    ```
+3.  **Load Jaffle Shop Data:** For each table (`customers`, `orders`, `payment`), run the `CREATE TABLE` statement followed by the `COPY INTO` statement (clearing the editor between table loads).
+      * Example for `customers`:
+        ```sql
+        create table raw.jaffle_shop.customers (id integer, first_name varchar, last_name varchar);
+        copy into raw.jaffle_shop.customers (id, first_name, last_name) from 's3://dbt-tutorial-public/jaffle_shop_customers.csv' file_format = ( type = 'CSV' field_delimiter = ',' skip_header = 1 );
+        ```
+      * Follow similar patterns for `orders` (with `_etl_loaded_at` column) and `payment` (with `_batched_at` column) as provided in the quickstart guide.
+4.  **Verify Data Loading:** Run `SELECT * FROM ...` queries for each table to confirm data is present.
+
+### 2.2. Snowflake User/Role Permissions
+
+Crucial for dbt to read source data and write transformed models. Execute these grants in your Snowflake UI using an **administrative role** (e.g., `ACCOUNTADMIN`):
+
+```sql
+-- Grant USAGE on the warehouse
+GRANT USAGE ON WAREHOUSE TRANSFORMING TO ROLE DATA_DEVELOPER_ROLE;
+GRANT CREATE SCHEMA ON DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE; -- Allows dbt to create your dev schema (e.g., dbt_dhouse)
+
+-- Grant USAGE on the databases
+GRANT USAGE ON DATABASE RAW TO ROLE DATA_DEVELOPER_ROLE;
+GRANT USAGE ON DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+
+-- Grant USAGE on current and future schemas in the RAW database (source data for dbt)
+GRANT USAGE ON SCHEMA RAW.JAFFLE_SHOP TO ROLE DATA_DEVELOPER_ROLE;
+GRANT SELECT ON ALL TABLES IN SCHEMA RAW.JAFFLE_SHOP TO ROLE DATA_DEVELOPER_ROLE;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA RAW.JAFFLE_SHOP TO ROLE DATA_DEVELOPER_ROLE;
+
+GRANT USAGE ON SCHEMA RAW.STRIPE TO ROLE DATA_DEVELOPER_ROLE;
+GRANT SELECT ON ALL TABLES IN SCHEMA RAW.STRIPE TO ROLE DATA_DEVELOPER_ROLE;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA RAW.STRIPE TO ROLE DATA_DEVELOPER_ROLE;
+
+-- Grant permissions on your analytics development schema (where dbt will build models)
+-- IMPORTANT: This schema will be created by dbt in the 'ANALYTICS' database
+GRANT USAGE ON ALL SCHEMAS IN DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+GRANT USAGE ON FUTURE SCHEMAS IN DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+GRANT CREATE TABLE ON FUTURE SCHEMAS IN DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+GRANT CREATE VIEW ON FUTURE SCHEMAS IN DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+GRANT CREATE STAGE ON FUTURE SCHEMAS IN DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+GRANT CREATE FILE FORMAT ON FUTURE SCHEMAS IN DATABASE ANALYTICS TO ROLE DATA_DEVELOPER_ROLE;
+```
+
+### 2.3. Snowflake Network Policy Troubleshooting
+
+**Issue:** `Network Policy is required in Snowflake` error.
+
+  * **Cause:** Your Snowflake account has network policies enabled, and your machine's public IP address is not explicitly whitelisted.
+  * **Solution (Temporary Bypass):** As an admin in Snowflake UI, run `ALTER ACCOUNT UNSET NETWORK_POLICY;` (less secure, use for quick testing only).
+  * **Key Insight / Long-Term Challenge for WFH:** Your **local machine's public IP** needs whitelisting. For work-from-home (WFH) scenarios with dynamic IPs, this is a recurring problem.
+      * **Long-Term Solutions:**
+          * **Corporate VPN:** Whitelist the VPN egress IP range.
+          * **dbt Cloud:** Use dbt Cloud (its static IP ranges would be whitelisted).
+          * **Cloud-hosted Dev Environments:** Use static IPs of cloud VMs hosting development environments.
+  * **Clarification:** Running Docker/Dev Containers *locally* does **not** solve the public IP issue, as connections still originate from your host machine's IP.
+
+## 3\. dbt Project Initialization & Configuration
+
+### 3.1. Initialize dbt Project
+
+1.  In your **activated `(dbt-env)` terminal**, run:
+    ```bash
+    dbt init [your_project_name]
+    ```
+      * Example Project Name: `jaffle_shop_dbt`
+      * Schema (for dev models in `ANALYTICS` DB): `dbt_dhouse` (using `dbt_yourinitials` is a good practice).
+      * Threads: `4` (a good starting point for local development).
+
+### 3.2. `profiles.yml` Configuration
+
+  * **Location:** `C:\Users\YourUsername\.dbt\profiles.yml`
+  * **Credentials:** You used a **Snowflake Programmatic Access Token (PAT)** as your password, securely stored in 1Password. (For production, consider environment variables or secret management tools for sensitive credentials).
+  * **Common Issue (Account Identifier):** Ensure your `account` identifier is exact. A common mistake is using `.` instead of `-` or omitting the region (e.g., corrected from `yvdhnko.pl32725` to `yvdhnko-pl32725`). This caused the hostname certificate mismatch error.
+
+### 3.3. Source Definitions (`sources.yml`)
+
+  * **Purpose:** Explicitly tells dbt where your raw data lives (database, schema). This is crucial when your raw data is in a different database (`RAW`) than where your dbt models will be built (`ANALYTICS`).
+  * **Resolution:** Add a `sources.yml` file (e.g., in `models/example/sources.yml`) with the following structure. This resolved the "source not found" compilation error.
+    ```yaml
+    version: 2
+
+    sources:
+      - name: jaffle_shop # Name used in {{ source('jaffle_shop', 'table') }}
+        database: RAW    # Explicitly points to the RAW database
+        schema: jaffle_shop
+        tables:
+          - name: customers
+          - name: orders
+
+      - name: stripe
+        database: RAW    # Explicitly points to the RAW database
+        schema: stripe
+        tables:
+          - name: payment
+    ```
+  * **Data Freshness:** You can define freshness checks for your sources in `sources.yml` using `loaded_at_field` (a timestamp column in your source table) and a `freshness` block (`warn_after`, `error_after`).
+    ```yaml
+    # Example snippet for freshness
+    loaded_at_field: _etl_loaded_at
+    freshness:
+      warn_after: {count: 12, period: hour}
+      error_after: {count: 24, period: hour}
+    ```
+
+### 3.4. dbt Package Management (`packages.yml`)
+
+`dbt packages` extend dbt's functionality with reusable macros and modules.
+
+1.  **Create `packages.yml`:** At your project root.
+2.  **Add Packages:**
+    ```yaml
+    # packages.yml
+    packages:
+      - package: dbt-labs/codegen
+        version: 0.12.0 # Check dbt Hub for latest compatible version
+      - package: dbt-labs/dbt_utils
+        version: 1.1.1 # Check dbt Hub for latest compatible version
+      - package: dbt-labs/audit_helper
+        version: 0.8.0 # Check dbt Hub for latest compatible version
+    ```
+3.  **Install Packages:** In your terminal, run `dbt deps`.
+
+### 3.5. Git Repository Setup
+
+Follow the dbt Core Manual Installation Guide ([https://docs.getdbt.com/guides/manual-install?step=2](https://docs.getdbt.com/guides/manual-install?step=2)):
+
+1.  **Create GitHub Repository:** Create a new **public** GitHub repository (e.g., `dbt-tutorial`) on `https://github.com/new`. **Do NOT initialize with a README/gitignore.**
+2.  **Save Git Commands:** Copy the "push an existing repository from the command line" commands provided by GitHub (e.g., `git remote add origin ...`, `git branch -M main`, `git push -u origin main`).
+3.  **Initialize Local Git:** In your **activated `(dbt-env)` terminal** (within your dbt project directory):
+    ```bash
+    git init
+    git add .
+    git commit -m "Initial dbt project setup"
+    ```
+4.  **Connect & Push:** Paste and run the commands copied from GitHub.
+
+## 4\. dbt Core Development Workflow
+
+### 4.1. Verify dbt Installation
+
+  * In your terminal, run `dbt --version`. This confirms dbt is installed and accessible.
+
+### 4.2. Run dbt Models
+
+  * **Concept:** `dbt run` compiles your dbt model SQL files and executes the necessary DDL/DML to build them as tables or views in your Snowflake warehouse.
+  * **Execution:** In your terminal, run `dbt run`.
+  * **Verification:** Confirm models like `MY_FIRST_DBT_MODEL`, `MY_SECOND_DBT_MODEL`, and `ORDERS_BY_CUSTOMER` appear in your Snowflake `ANALYTICS.dbt_dhouse` schema.
+
+### 4.3. Test dbt Models
+
+  * **Concept:** `dbt test` validates the quality and integrity of your data. It runs SQL queries that return rows *only if* a test fails (i.e., a data quality issue is found).
+  * **Execution:** In your terminal, run `dbt test`.
+  * **Types of Tests:**
+      * **Generic Tests:** Reusable tests applied via YAML (`not_null`, `unique`, `accepted_values`, `relationships`).
+      * **Singular Tests:** Custom SQL queries (`.sql` files in `tests/` directory) for specific assertions.
+  * **Initial Troubleshooting:** `not_null_my_first_dbt_model_id` failed.
+      * **Fix:** Uncommented the `WHERE ID IS NOT NULL` line in `models/example/my_first_dbt_model.sql`.
+      * **Note:** "Any assertion that you can make about your model in the form of a select query can be turned into a data test."
+
+### 4.4. Model Materialization
+
+  * **Concept:** How dbt persists your models in the data warehouse.
+      * **`view`**: Virtual, no data stored, latest data, faster to create.
+      * **`table`**: Physical, data stored, faster to query, slower to build, consumes storage.
+      * `incremental`: Efficiently update/insert new/changed rows.
+      * `ephemeral`: No object created, acts as a CTE.
+  * **Configuration:**
+      * **`dbt_project.yml`:** Set default materialization for a project or directory (e.g., `models: your_project: +materialized: table`).
+      * **`config()` macro in SQL:** Override project/directory defaults for individual models (e.g., `{{ config(materialized='table') }}`).
+  * **Demonstration:** Created `models/example/orders_by_customer.sql` with `{{ config(materialized='table') }}` at the top.
+
+### 4.5. Documentation (`dbt docs`)
+
+  * **Purpose:** Auto-generates an interactive data catalog and lineage graph for your project.
+  * **Generate:** `dbt docs generate` (creates `catalog.json` and `manifest.json` in `target/`).
+  * **Serve:** `dbt docs serve` (starts a local web server to view docs in browser).
+  * **Adding Descriptions:** Use `description:` fields in `schema.yml` (for models/columns) and `sources.yml` (for sources/tables).
+  * **Doc Blocks:**
+      * **Purpose:** Reusable, rich, multi-line Markdown descriptions.
+      * **Creation:** Define in `.md` files in a `docs/` directory (e.g., `docs/common_docs.md`) using `{% docs doc_block_name %}{% enddocs %}`.
+      * **Reference:** Use `description: "{{ doc('doc_block_name') }}"` in your YAML files.
+
+## 5\. Project Structure & Best Practices (Conceptual Notes)
+
+### 5.1. Model Naming & Layering
+
+  * **Core Principle:** Organize models into layers reflecting transformation stages (Source-Conformed to Business-Conformed).
+  * **Your Proposed Layers:**
+      * **`RAW`:** Raw data, loaded as-is (e.g., by Fivetran).
+      * **`BASE_` models:** Used primarily for **unioning** identically structured but different raw source tables (e.g., `TITHELY_STRIPE`, `BREEZE_STRIPE`). They perform minimal transformations needed *only for unioning*.
+      * **`STG_` (Staging) models:** Built *on top of* `BASE_` models (or directly on single raw sources). They perform light cleaning, column renaming (`snake_case`), casting, and adding surrogate keys.
+  * **Key Flow Clarification:** It's `UNION` (in `BASE_` models) first, then `RENAME/CLEAN` (in `STG_` models), not the other way around.
+  * **Naming Convention:** Models should be plural (your preference).
+
+### 5.2. Key Resources on Naming & Structure
+
+  * "How we structure our projects": [https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)
+  * "On the Importance of Naming": [https://docs.getdbt.com/blog/on-the-importance-of-naming](https://docs.getdbt.com/blog/on-the-importance-of-naming)
+  * "Stakeholder-Friendly Model Names": [https://docs.getdbt.com/blog/stakeholder-friendly-model-names](https://docs.getdbt.com/blog/align-with-dbt-project-evaluator)
+  * **Future Exploration:** Explore forking the "how we structure our projects" guide into your project's `README.md`.
+
+### 5.3. SQL Formatting & Linting
+
+Tools for consistent code style and quality:
+
+  * **SQLFluff:**
+      * **Type:** Linter (finds issues) and Formatter (fixes style).
+      * **Key Feature:** Highly configurable via `.sqlfluff` file, supports Jinja/dbt.
+      * **VSCode:** `vscode-sqlfluff` extension.
+  * **sqlfmt:**
+      * **Type:** Opinionated formatter only.
+      * **Key Feature:** Enforces a single, fixed style with minimal configuration.
+      * **VSCode:** Often integrated via `dbt Power User` extension.
+
+### 5.4. Snowflake Casing with dbt
+
+  * **Snowflake Default:** Unquoted identifiers become `UPPERCASE`. Quoted identifiers retain exact casing.
+  * **dbt Preference:** Lowercase `snake_case` in SQL files.
+  * **dbt's Bridge:** `dbt-snowflake` typically creates objects **unquoted**, allowing Snowflake to automatically uppercase them. This is the recommended practice.
+  * **Configuration:** Ensure `quoting: identifier: false` in `dbt_project.yml`.
+  * **Exception:** For raw source tables in Snowflake created with *explicit mixed-case quoting*, use `identifier: "ExactCase"` and `quoting: identifier: true` in `sources.yml`.
+
+## 6\. Advanced Concepts Explored (for Future Consideration)
+
+### 6.1. Semantic Layer & MetricFlow
+
+  * **Concept:** A consistent, business-friendly representation of metrics and dimensions on top of your dbt models.
+  * **Purpose:** Solves inconsistent metrics, duplicated logic, empowers business users.
+  * **dbt's Approach:** Define `metrics` in YAML (dbt Core); dbt Cloud Semantic Layer (powered by MetricFlow) exposes these via API for BI tools.
+  * **Tradeoffs (Adopting Early):** Adds complexity, maintenance overhead, requires well-modeled data underneath, ecosystem maturity.
+  * **Recommendation:** Focus on core modeling first, start defining simple `metrics` in YAML, then consider the full dbt Cloud Semantic Layer when business needs strongly demand it for consistent BI.
+  * **MetricFlow:** The open-source query engine that powers the dbt Semantic Layer, dynamically generating SQL for metrics.
+      * Resources: [dbt Developer Hub - About MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow)
+
+### 6.2. Fivetran Transformations & Orchestration
+
+  * **Fivetran's Pre-built Data Models:** Open-source dbt packages maintained by Fivetran that provide analytics-ready models built on raw Fivetran-synced data (e.g., `stg_`, `fct_` models). Accelerates initial setup.
+  * **Fivetran's Orchestration:** Fivetran can directly trigger *your custom dbt Core jobs* (e.g., `dbt run`) after its data loads complete, providing integrated scheduling and monitoring within the Fivetran platform.
+
+### 6.3. Audit & Evaluation Tools
+
+  * **`dbt_audit_helper`:** A dbt package for auditing and comparing datasets (e.g., `compare_row_counts`, `compare_relations`). Useful for data quality, reconciliation, and identifying discrepancies.
+  * **`dbt_project_evaluator`:** A dbt package that automatically evaluates your project against best practices (modeling, testing, documentation, structure, performance). Can be used as a CI check.
+      * Resource: [Align with dbt\_project\_evaluator](https://docs.getdbt.com/blog/align-with-dbt-project-evaluator)
+
+-----
+
+This guide encapsulates your entire dbt Core setup journey, including the successful steps, the challenges overcome, and the various concepts and tools you explored. Good luck with your dbt development\!

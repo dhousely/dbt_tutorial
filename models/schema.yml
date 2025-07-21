@@ -1,0 +1,35 @@
+
+version: 2
+
+models:
+  - name: my_first_dbt_model
+    description: "A starter dbt model"
+    columns:
+      - name: id
+        description: "The primary key for this table"
+        data_tests:
+          - unique
+          - not_null
+
+  - name: my_second_dbt_model
+    description: "A starter dbt model"
+    columns:
+      - name: id
+        description: "The primary key for this table"
+        data_tests:
+          - unique
+          - not_null
+      
+sources:
+  - name: jaffle_shop
+    database: RAW # This explicitly tells dbt to look in the RAW database
+    schema: jaffle_shop
+    tables:
+      - name: customers
+      - name: orders
+
+  - name: stripe
+    database: RAW # This explicitly tells dbt to look in the RAW database
+    schema: stripe
+    tables:
+      - name: payment
