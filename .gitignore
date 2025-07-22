@@ -3,3 +3,24 @@ target/
 dbt_packages/
 logs/
 dbt_internal_packages/
+dbt_modules/
+
+# Logs
+logs/
+*.log
+
+# Python virtual environment (if it's inside your project)
+# Your dbt-env is outside, so this may not be strictly necessary,
+# but it's good to include if you ever move it or create others here.
+.venv/
+venv/
+env/
+*.env
+# Explicitly include the name of your virtual environment folder if it's common
+dbt-env/
+
+# OS and Editor specific files
+.DS_Store
+.ipynb_checkpoints/
+.vscode/
+Thumbs.db
