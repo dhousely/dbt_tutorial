@@ -1,0 +1,9 @@
+# models/my_project_area/schema.yml
+version: 2 # Always start with the YAML version
+
+models:
+  # Define properties for a specific dbt model
+  - name: base_thub_hub_billing_offers # Must exactly match your model's SQL filename (without .sql)
+    description: > # Use a YAML block scalar for multi-line descriptions
+      This model serves as an example for basic staging transformations.
+      blah blah blah
